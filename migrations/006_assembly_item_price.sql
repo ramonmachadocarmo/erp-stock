@@ -1,0 +1,2 @@
+ALTER TABLE assembly_items
+    ADD COLUMN unit_price NUMERIC(15,4) NOT NULL DEFAULT 0;

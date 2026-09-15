@@ -1,0 +1,86 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"erp/pkg/config"
+	"erp/pkg/httpserver"
+	"erp/pkg/mongox"
+	"erp/pkg/postgres"
+	"erp/pkg/rabbit"
+	"erp/pkg/redisx"
+	httpadapter "erp/services/stock-service/internal/adapters/http"
+	mongoadapter "erp/services/stock-service/internal/adapters/mongo"
+	pgadapter "erp/services/stock-service/internal/adapters/postgres"
+	rabbitadapter "erp/services/stock-service/internal/adapters/rabbit"
+	redisadapter "erp/services/stock-service/internal/adapters/redis"
+	"erp/services/stock-service/internal/application"
+	"erp/services/stock-service/migrations"
+)
+
+func main() {
+	cfg := config.Load()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	pool, err := postgres.Connect(ctx, cfg.Postgres.DSN())
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer pool.Close()
+	if err := postgres.Migrate(ctx, pool, migrations.FS, "."); err != nil {
+		log.Fatal(err)
+	}
+
+	db, disconnect, err := mongox.Connect(ctx, cfg.Mongo.URI(), cfg.Mongo.DB)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer disconnect()
+
+	rdb := redisx.Connect(cfg.Redis.Addr(), cfg.Redis.Password)
+	defer rdb.Close()
+
+	bus, err := rabbit.Wait(cfg.Rabbit.URI(), 15)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer bus.Close()
+
+	svc := application.New(
+		mongoadapter.NewProductRepo(db),
+		pgadapter.NewStockRepo(pool),
+		pgadapter.NewCatalogRepo(pool),
+		rabbitadapter.NewPublisher(bus),
+		redisadapter.NewLocker(rdb),
+		redisadapter.NewCache(rdb),
+		mongoadapter.NewCategoryRepo(db),
+		mongox.NewSequence(db.Collection("counters"), "product_sku"),
+		postgres.NewSequence(pool, "warehouse"),
+		postgres.NewSequence(pool, "assembly"),
+	)
+	if err := rabbitadapter.Consume(bus, svc); err != nil {
+		log.Fatal(err)
+	}
+
+	engine := httpserver.New(cfg.ServiceName)
+	httpadapter.New(svc).Register(engine, httpserver.JWT(cfg.JWTSecret, cfg.JWTIssuer))
+
+	srv := &http.Server{Addr: ":" + cfg.HTTPPort, Handler: engine}
+	go func() {
+		log.Printf("%s listening on %s", cfg.ServiceName, srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	}()
+	<-ctx.Done()
+	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(shutdown)
+}
