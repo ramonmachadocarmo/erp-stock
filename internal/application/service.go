@@ -555,6 +555,7 @@ func (s *Service) CreateAssembly(ctx context.Context, a domain.Assembly) (domain
 		return domain.Assembly{}, err
 	}
 	a.Code = code
+	a.Active = true
 	if err := validateAssembly(a); err != nil {
 		return domain.Assembly{}, err
 	}

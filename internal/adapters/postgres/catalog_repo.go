@@ -100,10 +100,10 @@ func (r *CatalogRepo) CreateAssembly(ctx context.Context, a domain.Assembly) (do
 	}
 	defer tx.Rollback(ctx)
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO assemblies (code, name, product_id, margin_percent, cost, suggested_price)
-		VALUES ($1,$2,$3,$4,$5,$6)
+		INSERT INTO assemblies (code, name, product_id, margin_percent, cost, suggested_price, active)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
 		RETURNING id, created_at
-	`, a.Code, a.Name, nilIfEmpty(a.ProductID), a.MarginPercent, a.Cost, a.SuggestedPrice).Scan(&a.ID, &a.CreatedAt); err != nil {
+	`, a.Code, a.Name, nilIfEmpty(a.ProductID), a.MarginPercent, a.Cost, a.SuggestedPrice, a.Active).Scan(&a.ID, &a.CreatedAt); err != nil {
 		if isUnique(err) {
 			return domain.Assembly{}, domain.ErrConflict
 		}
@@ -128,9 +128,9 @@ func (r *CatalogRepo) UpdateAssembly(ctx context.Context, a domain.Assembly) err
 	defer tx.Rollback(ctx)
 	tag, err := tx.Exec(ctx, `
 		UPDATE assemblies
-		SET code=$2, name=$3, product_id=$4, margin_percent=$5, cost=$6, suggested_price=$7
+		SET code=$2, name=$3, product_id=$4, margin_percent=$5, cost=$6, suggested_price=$7, active=$8
 		WHERE id=$1
-	`, a.ID, a.Code, a.Name, nilIfEmpty(a.ProductID), a.MarginPercent, a.Cost, a.SuggestedPrice)
+	`, a.ID, a.Code, a.Name, nilIfEmpty(a.ProductID), a.MarginPercent, a.Cost, a.SuggestedPrice, a.Active)
 	if err != nil {
 		return err
 	}
@@ -148,7 +148,7 @@ func (r *CatalogRepo) UpdateAssembly(ctx context.Context, a domain.Assembly) err
 
 func (r *CatalogRepo) GetAssembly(ctx context.Context, id string) (domain.Assembly, error) {
 	a, err := scanAssembly(r.pool.QueryRow(ctx, `
-		SELECT id, code, name, product_id, margin_percent, cost, suggested_price, created_at
+		SELECT id, code, name, product_id, margin_percent, cost, suggested_price, active, created_at
 		FROM assemblies WHERE id=$1
 	`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -170,7 +170,7 @@ func (r *CatalogRepo) GetAssembly(ctx context.Context, id string) (domain.Assemb
 
 func (r *CatalogRepo) ListAssemblies(ctx context.Context) ([]domain.Assembly, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, code, name, product_id, margin_percent, cost, suggested_price, created_at
+		SELECT id, code, name, product_id, margin_percent, cost, suggested_price, active, created_at
 		FROM assemblies ORDER BY code
 	`)
 	if err != nil {
@@ -227,7 +227,7 @@ type rowScanner interface {
 func scanAssembly(row rowScanner) (domain.Assembly, error) {
 	var a domain.Assembly
 	var productID *string
-	err := row.Scan(&a.ID, &a.Code, &a.Name, &productID, &a.MarginPercent, &a.Cost, &a.SuggestedPrice, &a.CreatedAt)
+	err := row.Scan(&a.ID, &a.Code, &a.Name, &productID, &a.MarginPercent, &a.Cost, &a.SuggestedPrice, &a.Active, &a.CreatedAt)
 	if productID != nil {
 		a.ProductID = *productID
 	}

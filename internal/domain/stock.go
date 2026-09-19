@@ -110,6 +110,7 @@ type Assembly struct {
 	MarginPercent  float64        `json:"margin_percent"`
 	Cost           float64        `json:"cost"`
 	SuggestedPrice float64        `json:"suggested_price"`
+	Active         bool           `json:"active"`
 	Items          []AssemblyItem `json:"items"`
 	CreatedAt      time.Time      `json:"created_at"`
 }
