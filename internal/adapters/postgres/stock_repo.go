@@ -374,15 +374,15 @@ func (r *StockRepo) InsertMovement(ctx context.Context, m domain.Movement) error
 		refID = m.ReferenceDocID
 	}
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO stock_movements (product_id, warehouse_id, movement_type, quantity, reference_doc_type, reference_doc_id)
-		VALUES ($1,$2,$3,$4,$5,$6)
-	`, m.ProductID, m.WarehouseID, m.MovementType, m.Quantity, m.ReferenceDocType, refID)
+		INSERT INTO stock_movements (product_id, warehouse_id, movement_type, subtype, quantity, reference_doc_type, reference_doc_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+	`, m.ProductID, m.WarehouseID, m.MovementType, m.Subtype, m.Quantity, m.ReferenceDocType, refID)
 	return err
 }
 
 func (r *StockRepo) ListMovements(ctx context.Context) ([]domain.Movement, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, product_id, warehouse_id, movement_type, quantity, reference_doc_type, COALESCE(reference_doc_id::text, ''), created_at
+		SELECT id, product_id, warehouse_id, movement_type, subtype, quantity, reference_doc_type, COALESCE(reference_doc_id::text, ''), created_at
 		FROM stock_movements ORDER BY created_at DESC LIMIT 200
 	`)
 	if err != nil {
@@ -392,7 +392,7 @@ func (r *StockRepo) ListMovements(ctx context.Context) ([]domain.Movement, error
 	var out []domain.Movement
 	for rows.Next() {
 		var m domain.Movement
-		if err := rows.Scan(&m.ID, &m.ProductID, &m.WarehouseID, &m.MovementType, &m.Quantity, &m.ReferenceDocType, &m.ReferenceDocID, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.ProductID, &m.WarehouseID, &m.MovementType, &m.Subtype, &m.Quantity, &m.ReferenceDocType, &m.ReferenceDocID, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

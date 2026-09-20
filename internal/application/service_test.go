@@ -183,7 +183,7 @@ func stockSvcWithCatalog(assemblies []domain.Assembly) (*Service, *memStock, *me
 
 func TestCreateMovementIn(t *testing.T) {
 	svc, st := stockSvc()
-	if err := svc.CreateMovement(context.Background(), "p1", "w1", "IN", 20); err != nil {
+	if err := svc.CreateMovement(context.Background(), "p1", "w1", "IN", "PURCHASE", 20); err != nil {
 		t.Fatal(err)
 	}
 	if st.bal[balKey("p1", "w1")] != 20 {
@@ -197,7 +197,7 @@ func TestCreateMovementIn(t *testing.T) {
 func TestCreateMovementOut(t *testing.T) {
 	svc, st := stockSvc()
 	st.bal[balKey("p1", "w1")] = 10
-	if err := svc.CreateMovement(context.Background(), "p1", "w1", "OUT", 4); err != nil {
+	if err := svc.CreateMovement(context.Background(), "p1", "w1", "OUT", "LOSS", 4); err != nil {
 		t.Fatal(err)
 	}
 	if st.bal[balKey("p1", "w1")] != 6 || st.mov[0].MovementType != "MANUAL_OUT" {
@@ -207,14 +207,52 @@ func TestCreateMovementOut(t *testing.T) {
 
 func TestCreateMovementRejectsEmpty(t *testing.T) {
 	svc, _ := stockSvc()
-	if err := svc.CreateMovement(context.Background(), "", "w1", "IN", 1); err != domain.ErrInvalid {
+	if err := svc.CreateMovement(context.Background(), "", "w1", "IN", "", 1); err != domain.ErrInvalid {
 		t.Fatalf("%v", err)
 	}
-	if err := svc.CreateMovement(context.Background(), "p1", "w1", "IN", 0); err != domain.ErrInvalid {
+	if err := svc.CreateMovement(context.Background(), "p1", "w1", "IN", "", 0); err != domain.ErrInvalid {
 		t.Fatalf("%v", err)
 	}
-	if err := svc.CreateMovement(context.Background(), "p1", "w1", "X", 1); err != domain.ErrInvalid {
+	if err := svc.CreateMovement(context.Background(), "p1", "w1", "X", "", 1); err != domain.ErrInvalid {
 		t.Fatalf("%v", err)
+	}
+}
+
+func TestCreateMovementSubtypes(t *testing.T) {
+	svc, st := stockSvc()
+	st.bal[balKey("p1", "w1")] = 10
+	if err := svc.CreateMovement(context.Background(), "p1", "w1", "OUT", "SALE", 1); err != nil {
+		t.Fatal(err)
+	}
+	if st.mov[0].Subtype != "SALE" {
+		t.Fatalf("%+v", st.mov)
+	}
+	if err := svc.CreateMovement(context.Background(), "p1", "w1", "OUT", "PURCHASE", 1); err != domain.ErrInvalid {
+		t.Fatalf("out/purchase should be invalid: %v", err)
+	}
+	if err := svc.CreateMovement(context.Background(), "p1", "w1", "IN", "LOSS", 1); err != domain.ErrInvalid {
+		t.Fatalf("in/loss should be invalid: %v", err)
+	}
+}
+
+func TestTransferStockMovesBetweenWarehouses(t *testing.T) {
+	svc, st := stockSvc()
+	st.wh["w2"] = domain.Warehouse{ID: "w2", Code: "000002", Name: "DESTINO"}
+	st.bal[balKey("p1", "w1")] = 10
+	if err := svc.TransferStock(context.Background(), "p1", "w1", "w2", 4); err != nil {
+		t.Fatal(err)
+	}
+	if st.bal[balKey("p1", "w1")] != 6 || st.bal[balKey("p1", "w2")] != 4 {
+		t.Fatalf("%v", st.bal)
+	}
+	if len(st.mov) != 2 || st.mov[0].MovementType != "TRANSFER_OUT" || st.mov[1].MovementType != "TRANSFER_IN" || st.mov[0].ReferenceDocID == "" || st.mov[0].ReferenceDocID != st.mov[1].ReferenceDocID {
+		t.Fatalf("%+v", st.mov)
+	}
+	if err := svc.TransferStock(context.Background(), "p1", "w1", "w1", 1); err != domain.ErrInvalid {
+		t.Fatalf("same warehouse: %v", err)
+	}
+	if err := svc.TransferStock(context.Background(), "p1", "w1", "w2", 100); err == nil {
+		t.Fatal("expected insufficient stock")
 	}
 }
 

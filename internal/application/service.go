@@ -229,8 +229,25 @@ func (s *Service) ConfirmInvoice(ctx context.Context, ev domain.InvoiceEvent) er
 	return s.confirmOutbound(ctx, ev)
 }
 
-func (s *Service) CreateMovement(ctx context.Context, productID, warehouseID, direction string, qty float64) error {
+// CreateMovement records a manual entry (IN, subtype PURCHASE) or exit (OUT, subtype SALE or
+// LOSS). An empty subtype is accepted for older clients and stored blank.
+func (s *Service) CreateMovement(ctx context.Context, productID, warehouseID, direction, subtype string, qty float64) error {
 	if qty <= 0 || productID == "" || warehouseID == "" {
+		return domain.ErrInvalid
+	}
+	subtype = strings.ToUpper(strings.TrimSpace(subtype))
+	typ := "MANUAL_IN"
+	switch strings.ToUpper(direction) {
+	case "IN":
+		if subtype != "" && subtype != domain.SubtypePurchase {
+			return domain.ErrInvalid
+		}
+	case "OUT":
+		typ = "MANUAL_OUT"
+		if subtype != "" && subtype != domain.SubtypeSale && subtype != domain.SubtypeLoss {
+			return domain.ErrInvalid
+		}
+	default:
 		return domain.ErrInvalid
 	}
 	if _, err := s.products.Get(ctx, productID); err != nil {
@@ -239,13 +256,34 @@ func (s *Service) CreateMovement(ctx context.Context, productID, warehouseID, di
 	if _, err := s.stock.GetWarehouse(ctx, warehouseID); err != nil {
 		return err
 	}
-	typ := "MANUAL_IN"
-	if strings.ToUpper(direction) == "OUT" {
-		typ = "MANUAL_OUT"
-	} else if strings.ToUpper(direction) != "IN" {
+	return s.applyQtySub(ctx, productID, warehouseID, typ, subtype, qty, "MANUAL", "")
+}
+
+// TransferStock moves qty of a product between two warehouses as a TRANSFER_OUT / TRANSFER_IN
+// movement pair sharing one reference id. If the destination step fails, the origin is credited
+// back (recorded as its own movement) so balances and history stay consistent.
+func (s *Service) TransferStock(ctx context.Context, productID, fromWarehouseID, toWarehouseID string, qty float64) error {
+	if qty <= 0 || productID == "" || fromWarehouseID == "" || toWarehouseID == "" || fromWarehouseID == toWarehouseID {
 		return domain.ErrInvalid
 	}
-	return s.applyQty(ctx, productID, warehouseID, typ, qty, "MANUAL", "")
+	if _, err := s.products.Get(ctx, productID); err != nil {
+		return err
+	}
+	if _, err := s.stock.GetWarehouse(ctx, fromWarehouseID); err != nil {
+		return err
+	}
+	if _, err := s.stock.GetWarehouse(ctx, toWarehouseID); err != nil {
+		return err
+	}
+	ref := uuid.NewString()
+	if err := s.applyQtySub(ctx, productID, fromWarehouseID, "TRANSFER_OUT", domain.SubtypeTransfer, qty, "TRANSFER", ref); err != nil {
+		return err
+	}
+	if err := s.applyQtySub(ctx, productID, toWarehouseID, "TRANSFER_IN", domain.SubtypeTransfer, qty, "TRANSFER", ref); err != nil {
+		_ = s.applyQtySub(ctx, productID, fromWarehouseID, "TRANSFER_IN", domain.SubtypeTransfer, qty, "TRANSFER", ref)
+		return err
+	}
+	return nil
 }
 
 func (s *Service) ReceivePurchase(ctx context.Context, orderID, warehouseID string, items []domain.OrderItem) error {
@@ -425,14 +463,28 @@ func (s *Service) toStockFromPurchase(ctx context.Context, productID string, qty
 	return p.ToStockQty(qty, p.PurchaseUoM)
 }
 
+func defaultSubtype(typ string) string {
+	switch typ {
+	case "PURCHASE_IN":
+		return domain.SubtypePurchase
+	case "SALE_OUT":
+		return domain.SubtypeSale
+	}
+	return ""
+}
+
 func (s *Service) applyQty(ctx context.Context, productID, warehouseID, typ string, qty float64, docType, docID string) error {
+	return s.applyQtySub(ctx, productID, warehouseID, typ, defaultSubtype(typ), qty, docType, docID)
+}
+
+func (s *Service) applyQtySub(ctx context.Context, productID, warehouseID, typ, subtype string, qty float64, docType, docID string) error {
 	key := fmt.Sprintf("stock:%s:%s", productID, warehouseID)
 	unlock, err := s.lock.Lock(ctx, key)
 	if err != nil {
 		return err
 	}
 	defer unlock(ctx)
-	if typ == "MANUAL_IN" || typ == "PURCHASE_IN" {
+	if typ == "MANUAL_IN" || typ == "PURCHASE_IN" || typ == "TRANSFER_IN" {
 		if err := s.stock.AddAvailable(ctx, productID, warehouseID, qty); err != nil {
 			return err
 		}
@@ -442,7 +494,7 @@ func (s *Service) applyQty(ctx context.Context, productID, warehouseID, typ stri
 		}
 	}
 	if err := s.stock.InsertMovement(ctx, domain.Movement{
-		ProductID: productID, WarehouseID: warehouseID, MovementType: typ,
+		ProductID: productID, WarehouseID: warehouseID, MovementType: typ, Subtype: subtype,
 		Quantity: qty, ReferenceDocType: docType, ReferenceDocID: docID,
 	}); err != nil {
 		return err

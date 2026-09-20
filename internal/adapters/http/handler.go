@@ -38,6 +38,7 @@ func (h *Handler) Register(r *gin.Engine, jwt gin.HandlerFunc) {
 	api.PUT("/balances", h.setBalance)
 	api.GET("/movements", h.listMovements)
 	api.POST("/movements", h.createMovement)
+	api.POST("/movements/transfer", h.transferStock)
 	api.GET("/reservations", h.listOpenReservations)
 	api.POST("/purchases/receive", h.receivePurchase)
 	api.GET("/prices/sale", h.listSalePrices)
@@ -248,7 +249,28 @@ type movementIn struct {
 	ProductID   string  `json:"product_id" binding:"required"`
 	WarehouseID string  `json:"warehouse_id" binding:"required"`
 	Direction   string  `json:"direction" binding:"required"`
+	Subtype     string  `json:"subtype"`
 	Quantity    float64 `json:"quantity" binding:"required"`
+}
+
+type transferIn struct {
+	ProductID       string  `json:"product_id" binding:"required"`
+	FromWarehouseID string  `json:"from_warehouse_id" binding:"required"`
+	ToWarehouseID   string  `json:"to_warehouse_id" binding:"required"`
+	Quantity        float64 `json:"quantity" binding:"required"`
+}
+
+func (h *Handler) transferStock(c *gin.Context) {
+	var in transferIn
+	if err := c.ShouldBindJSON(&in); err != nil {
+		httpserver.Error(c, http.StatusBadRequest, err)
+		return
+	}
+	if err := h.svc.TransferStock(c.Request.Context(), in.ProductID, in.FromWarehouseID, in.ToWarehouseID, in.Quantity); err != nil {
+		httpserver.Error(c, statusFrom(err), err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"ok": true})
 }
 
 func (h *Handler) createMovement(c *gin.Context) {
@@ -257,7 +279,7 @@ func (h *Handler) createMovement(c *gin.Context) {
 		httpserver.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	if err := h.svc.CreateMovement(c.Request.Context(), in.ProductID, in.WarehouseID, in.Direction, in.Quantity); err != nil {
+	if err := h.svc.CreateMovement(c.Request.Context(), in.ProductID, in.WarehouseID, in.Direction, in.Subtype, in.Quantity); err != nil {
 		httpserver.Error(c, statusFrom(err), err)
 		return
 	}

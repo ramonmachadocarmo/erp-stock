@@ -161,11 +161,19 @@ type Balance struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
+const (
+	SubtypePurchase = "PURCHASE"
+	SubtypeSale     = "SALE"
+	SubtypeLoss     = "LOSS"
+	SubtypeTransfer = "TRANSFER"
+)
+
 type Movement struct {
 	ID               string    `json:"id"`
 	ProductID        string    `json:"product_id"`
 	WarehouseID      string    `json:"warehouse_id"`
 	MovementType     string    `json:"movement_type"`
+	Subtype          string    `json:"subtype"`
 	Quantity         float64   `json:"quantity"`
 	ReferenceDocType string    `json:"reference_doc_type"`
 	ReferenceDocID   string    `json:"reference_doc_id"`
