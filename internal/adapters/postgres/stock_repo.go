@@ -380,11 +380,26 @@ func (r *StockRepo) InsertMovement(ctx context.Context, m domain.Movement) error
 	return err
 }
 
-func (r *StockRepo) ListMovements(ctx context.Context) ([]domain.Movement, error) {
-	rows, err := r.pool.Query(ctx, `
+func (r *StockRepo) ListMovements(ctx context.Context, f domain.MovementFilter) ([]domain.Movement, error) {
+	var wh any
+	if f.WarehouseID != "" {
+		wh = f.WarehouseID
+	}
+	query := `
 		SELECT id, product_id, warehouse_id, movement_type, subtype, quantity, reference_doc_type, COALESCE(reference_doc_id::text, ''), created_at
-		FROM stock_movements ORDER BY created_at DESC LIMIT 200
-	`)
+		FROM stock_movements
+		WHERE ($1 = '' OR product_id = $1)
+		  AND ($2::uuid IS NULL OR warehouse_id = $2::uuid)
+		  AND ($3 = '' OR subtype = $3)
+		  AND ($4::timestamptz IS NULL OR created_at >= $4)
+		  AND ($5::timestamptz IS NULL OR created_at <= $5)
+		ORDER BY created_at DESC
+	`
+	args := []any{f.ProductID, wh, f.Subtype, f.From, f.To}
+	if f.ProductID == "" && f.WarehouseID == "" && f.Subtype == "" && f.From == nil && f.To == nil {
+		query += " LIMIT 200"
+	}
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -224,7 +224,22 @@ func (h *Handler) setBalance(c *gin.Context) {
 }
 
 func (h *Handler) listMovements(c *gin.Context) {
-	out, err := h.svc.ListMovements(c.Request.Context())
+	f := domain.MovementFilter{
+		ProductID:   c.Query("product_id"),
+		WarehouseID: c.Query("warehouse_id"),
+		Subtype:     c.Query("subtype"),
+	}
+	if v := c.Query("from"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.From = &t
+		}
+	}
+	if v := c.Query("to"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.To = &t
+		}
+	}
+	out, err := h.svc.ListMovements(c.Request.Context(), f)
 	if err != nil {
 		httpserver.Error(c, http.StatusInternalServerError, err)
 		return

@@ -113,7 +113,9 @@ func (m *memStock) InsertMovement(_ context.Context, mv domain.Movement) error {
 	m.mov = append(m.mov, mv)
 	return nil
 }
-func (m *memStock) ListMovements(context.Context) ([]domain.Movement, error) { return m.mov, nil }
+func (m *memStock) ListMovements(context.Context, domain.MovementFilter) ([]domain.Movement, error) {
+	return m.mov, nil
+}
 
 type memCatalog struct{ assemblies []domain.Assembly }
 

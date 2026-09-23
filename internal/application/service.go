@@ -189,8 +189,8 @@ func (s *Service) ListBalances(ctx context.Context) ([]domain.Balance, error) {
 	return s.stock.ListBalances(ctx)
 }
 
-func (s *Service) ListMovements(ctx context.Context) ([]domain.Movement, error) {
-	return s.stock.ListMovements(ctx)
+func (s *Service) ListMovements(ctx context.Context, f domain.MovementFilter) ([]domain.Movement, error) {
+	return s.stock.ListMovements(ctx, f)
 }
 
 func (s *Service) ListOpenReservations(ctx context.Context, productID string) ([]domain.Reservation, error) {
@@ -421,7 +421,7 @@ func (s *Service) applyConfirmedReservations(ctx context.Context, ev domain.Invo
 }
 
 func (s *Service) confirmReservedSale(ctx context.Context, ev domain.InvoiceEvent) error {
-	movs, err := s.stock.ListMovements(ctx)
+	movs, err := s.stock.ListMovements(ctx, domain.MovementFilter{})
 	if err != nil {
 		return err
 	}

@@ -180,6 +180,18 @@ type Movement struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
+// MovementFilter narrows ListMovements. A zero-value filter preserves the
+// original "recent activity" behavior (most recent movements, capped) used by
+// the stock MFE's movement feed; setting any field switches to an unbounded,
+// fully-filtered query, e.g. reports-service's loss report (Subtype: LOSS).
+type MovementFilter struct {
+	ProductID   string
+	WarehouseID string
+	Subtype     string
+	From        *time.Time
+	To          *time.Time
+}
+
 // OrderItemComponent overrides one product a kit line consumes from stock — set only when
 // the customer substituted an item at sale time. See ExpandKitItems.
 type OrderItemComponent struct {
@@ -298,7 +310,7 @@ type StockRepository interface {
 	HasMovement(ctx context.Context, docType, docID, movementType string) (bool, error)
 	ProductInUse(ctx context.Context, productID string) (bool, error)
 	InsertMovement(ctx context.Context, m Movement) error
-	ListMovements(ctx context.Context) ([]Movement, error)
+	ListMovements(ctx context.Context, f MovementFilter) ([]Movement, error)
 }
 
 type EventPublisher interface {
