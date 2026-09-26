@@ -45,7 +45,7 @@ func (r *ProductRepo) Create(ctx context.Context, p domain.Product) (domain.Prod
 
 func (r *ProductRepo) Update(ctx context.Context, p domain.Product) error {
 	res, err := r.col.UpdateByID(ctx, p.ID, bson.M{"$set": bson.M{
-		"sku": p.SKU, "barcode": p.Barcode, "name": p.Name, "category_id": p.CategoryID,
+		"sku": p.SKU, "barcode": p.Barcode, "name": p.Name, "popular_name": p.PopularName, "category_id": p.CategoryID,
 		"ncm": p.NCM, "unit_of_measure": p.UnitOfMeasure, "purchase_uom": p.PurchaseUoM,
 		"sale_uom": p.SaleUoM, "stock_uom": p.StockUoM, "uom_conversions": p.Conversions,
 		"kind": p.Kind, "weight_kg": p.WeightKg, "volume_m3": p.VolumeM3, "attributes": p.Attributes,

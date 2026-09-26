@@ -21,6 +21,7 @@ type Product struct {
 	SKU           string          `bson:"sku" json:"sku"`
 	Barcode       string          `bson:"barcode" json:"barcode"`
 	Name          string          `bson:"name" json:"name"`
+	PopularName   string          `bson:"popular_name" json:"popular_name"`
 	CategoryID    string          `bson:"category_id" json:"category_id"`
 	NCM           string          `bson:"ncm" json:"ncm"`
 	UnitOfMeasure string          `bson:"unit_of_measure" json:"unit_of_measure"`
